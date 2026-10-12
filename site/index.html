@@ -1,0 +1,480 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ProductionWatch Dashboard</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Crect width=%2716%27 height=%2716%27 rx=%273%27 fill=%27%230d1117%27/%3E%3Cpath d=%27M2 9h3l2-5 2 8 2-3h3%27 stroke=%27%233fb950%27 stroke-width=%271.6%27 fill=%27none%27/%3E%3C/svg%3E">
+<meta name="description" content="Interactive incident-response dashboard for ProductionWatch, a local application reliability lab. Browser simulation of the real FastAPI + Prometheus + Grafana stack.">
+<style>
+:root {
+  color-scheme: dark;
+  --bg: #0d1117; --panel: #151b23; --panel-2: #1b222c; --line: #2a3340; --text: #e6edf3;
+  --muted: #8b98a8; --green: #3fb950; --red: #f85149; --orange: #d29922; --blue: #58a6ff;
+  --purple: #bc8cff; --mono: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+a { color: var(--blue); }
+.wrap { max-width: 1280px; margin: 0 auto; padding: 16px; }
+header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; padding: 8px 0 16px; border-bottom: 1px solid var(--line); }
+h1 { font-size: 20px; margin: 0; letter-spacing: .2px; }
+h1 small { color: var(--muted); font-weight: 400; font-size: 13px; margin-left: 6px; }
+h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; border: 1px solid var(--line); color: var(--muted); }
+.notice { margin: 12px 0 16px; padding: 10px 14px; border: 1px solid var(--line); border-left: 3px solid var(--blue); background: var(--panel); border-radius: 6px; color: var(--muted); }
+.notice strong { color: var(--text); }
+.grid { display: grid; gap: 12px; }
+.tiles { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; min-width: 0; }
+.tile .label { color: var(--muted); font-size: 12px; }
+.tile .value { font-size: 22px; font-weight: 650; font-variant-numeric: tabular-nums; margin-top: 2px; }
+.tile.ok { border-top: 3px solid var(--green); } .tile.warn { border-top: 3px solid var(--orange); } .tile.bad { border-top: 3px solid var(--red); }
+.ok .value { color: var(--green); } .warn .value { color: var(--orange); } .bad .value { color: var(--red); }
+.charts { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 12px; }
+.chart-head { display: flex; justify-content: space-between; align-items: baseline; }
+.chart-head span { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+svg.chart { width: 100%; height: 150px; display: block; margin-top: 6px; }
+.main { grid-template-columns: 340px minmax(0, 1fr); margin-top: 12px; align-items: start; }
+.btn { font: inherit; background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 7px 10px; cursor: pointer; text-align: left; }
+.btn:hover:not(:disabled) { border-color: var(--blue); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn.primary { background: #1f6feb; border-color: #1f6feb; }
+.btn.active { border-color: var(--orange); box-shadow: inset 3px 0 0 var(--orange); }
+.modes { display: grid; gap: 6px; }
+.modes .btn small { display: block; color: var(--muted); font-size: 12px; }
+.alert-row { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0; border-bottom: 1px dashed var(--line); font-size: 13px; }
+.alert-row:last-child { border-bottom: 0; }
+.state { font-family: var(--mono); font-size: 12px; padding: 1px 7px; border-radius: 4px; }
+.state.inactive { color: var(--green); background: rgba(63,185,80,.12); }
+.state.pending { color: var(--orange); background: rgba(210,153,34,.15); }
+.state.firing { color: var(--red); background: rgba(248,81,73,.15); }
+.logs { font-family: var(--mono); font-size: 12px; height: 260px; overflow: auto; background: #0a0e13; border: 1px solid var(--line); border-radius: 6px; padding: 8px; white-space: pre; }
+.logs .e { color: var(--red); } .logs .w { color: var(--orange); } .logs .i { color: #9fb1c5; }
+.guide { border-left: 3px solid var(--purple); }
+.guide .step-title { font-weight: 650; font-size: 15px; }
+.guide .say { margin: 8px 0; padding: 8px 10px; background: var(--panel-2); border-radius: 6px; color: #d2dae4; }
+.guide .say::before { content: "Talking point: "; color: var(--purple); font-weight: 600; }
+.progress { display: flex; gap: 4px; margin: 8px 0; }
+.progress i { flex: 1; height: 4px; background: var(--line); border-radius: 2px; }
+.progress i.done { background: var(--purple); }
+.timeline { list-style: none; margin: 0; padding: 0; }
+.timeline li { position: relative; padding: 0 0 10px 18px; border-left: 2px solid var(--line); margin-left: 6px; }
+.timeline li::before { content: ""; position: absolute; left: -6px; top: 4px; width: 10px; height: 10px; border-radius: 50%; background: var(--blue); }
+.timeline li.detection::before { background: var(--red); } .timeline li.triage::before { background: var(--orange); }
+.timeline li.mitigation::before { background: var(--purple); } .timeline li.recovery::before { background: var(--green); }
+.timeline li.follow_up::before { background: var(--blue); }
+.timeline .t { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.timeline .p { font-weight: 600; text-transform: capitalize; }
+.inc-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+.sev { font-family: var(--mono); background: rgba(248,81,73,.15); color: var(--red); padding: 1px 7px; border-radius: 4px; font-size: 12px; }
+.status { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.row { display: flex; flex-wrap: wrap; gap: 6px; }
+.split { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+section.info { margin-top: 24px; }
+.arch { width: 100%; height: auto; max-height: 340px; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+td, th { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; }
+code { font-family: var(--mono); font-size: 12.5px; background: var(--panel-2); padding: 1px 5px; border-radius: 4px; }
+footer { color: var(--muted); font-size: 12px; margin: 28px 0 8px; border-top: 1px solid var(--line); padding-top: 12px; }
+@media (max-width: 1000px) {
+  .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .charts, .split { grid-template-columns: 1fr; }
+  .main { grid-template-columns: 1fr; }
+}
+@media (max-width: 520px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } .tile .value { font-size: 18px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>ProductionWatch <small>Application Reliability &amp; Incident Response Lab</small></h1>
+    <div class="row">
+      <span class="badge" id="clock">--:--:--</span>
+      <span class="badge">browser simulation</span>
+      <a class="badge" href="https://github.com/ArmandoSNHU/ProductionWatch">source on GitHub</a>
+    </div>
+  </header>
+
+  <div class="notice">
+    <strong>What this page is:</strong> an in-browser simulation of the ProductionWatch stack, so you can view the incident workflow without installing anything.
+    It uses the same metric names, alert rules, failure modes and incident lifecycle as the real system: a FastAPI service with Prometheus, Grafana and a Streamlit console, run locally with <code>docker compose up --build</code>.
+    All data is synthetic. This is a learning lab, not a production banking system.
+  </div>
+
+  <div class="grid tiles" id="tiles"></div>
+
+  <div class="grid charts">
+    <div class="panel"><div class="chart-head"><h2>Throughput</h2><span id="v-rps"></span></div><svg class="chart" id="c-rps"></svg></div>
+    <div class="panel"><div class="chart-head"><h2>5xx error rate</h2><span id="v-err"></span></div><svg class="chart" id="c-err"></svg></div>
+    <div class="panel"><div class="chart-head"><h2>p95 latency</h2><span id="v-p95"></span></div><svg class="chart" id="c-p95"></svg></div>
+  </div>
+
+  <div class="grid main">
+    <div class="grid">
+      <div class="panel guide" id="guide"></div>
+      <div class="panel">
+        <h2>Failure injection (demo only)</h2>
+        <div class="modes" id="modes"></div>
+      </div>
+      <div class="panel">
+        <h2>Prometheus alerts</h2>
+        <div id="alerts"></div>
+      </div>
+    </div>
+    <div class="grid">
+      <div class="panel">
+        <div class="chart-head"><h2>Structured logs &mdash; api</h2><span>newest first</span></div>
+        <div class="logs" id="logs"></div>
+      </div>
+      <div class="panel" id="incident"></div>
+    </div>
+  </div>
+
+  <section class="info grid split">
+    <div class="panel">
+      <h2>Architecture (real stack)</h2>
+      <svg class="arch" viewBox="0 0 560 300" role="img" aria-label="Architecture diagram">
+        <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10z" fill="#8b98a8"/></marker></defs>
+        <g font-family="system-ui" font-size="12" fill="#e6edf3">
+          <rect x="10" y="20" width="130" height="50" rx="6" fill="#1b222c" stroke="#2a3340"/><text x="75" y="42" text-anchor="middle">loadgen</text><text x="75" y="58" text-anchor="middle" fill="#8b98a8" font-size="11">~2 req/s traffic</text>
+          <rect x="10" y="125" width="130" height="50" rx="6" fill="#1b222c" stroke="#2a3340"/><text x="75" y="147" text-anchor="middle">Streamlit console</text><text x="75" y="163" text-anchor="middle" fill="#8b98a8" font-size="11">:8501 operator UI</text>
+          <rect x="215" y="70" width="140" height="90" rx="6" fill="#1b222c" stroke="#58a6ff"/><text x="285" y="95" text-anchor="middle" font-weight="600">FastAPI api</text><text x="285" y="113" text-anchor="middle" fill="#8b98a8" font-size="11">:8000 accounts, probes</text><text x="285" y="129" text-anchor="middle" fill="#8b98a8" font-size="11">incidents, /metrics</text><text x="285" y="145" text-anchor="middle" fill="#8b98a8" font-size="11">JSON logs + request IDs</text>
+          <rect x="215" y="215" width="140" height="50" rx="6" fill="#1b222c" stroke="#2a3340"/><text x="285" y="237" text-anchor="middle">SQLite</text><text x="285" y="253" text-anchor="middle" fill="#8b98a8" font-size="11">synthetic accounts, incidents</text>
+          <rect x="420" y="70" width="130" height="50" rx="6" fill="#1b222c" stroke="#2a3340"/><text x="485" y="92" text-anchor="middle">Prometheus</text><text x="485" y="108" text-anchor="middle" fill="#8b98a8" font-size="11">:9090 scrape 5s + alerts</text>
+          <rect x="420" y="175" width="130" height="50" rx="6" fill="#1b222c" stroke="#2a3340"/><text x="485" y="197" text-anchor="middle">Grafana</text><text x="485" y="213" text-anchor="middle" fill="#8b98a8" font-size="11">:3000 dashboards</text>
+        </g>
+        <g stroke="#8b98a8" stroke-width="1.5" fill="none" marker-end="url(#ar)">
+          <path d="M140,45 L213,90"/><path d="M140,150 L213,130"/><path d="M285,160 L285,213"/>
+          <path d="M418,95 L357,105"/><path d="M485,173 L485,122"/>
+        </g>
+        <g font-family="system-ui" font-size="10.5" fill="#8b98a8">
+          <text x="368" y="90">scrape /metrics</text><text x="492" y="152">PromQL</text><text x="150" y="128">admin + incident API</text>
+        </g>
+      </svg>
+    </div>
+    <div class="panel">
+      <h2>How this maps to an L2 application support role</h2>
+      <table>
+        <tr><th>Responsibility</th><th>Where it shows up</th></tr>
+        <tr><td>Monitoring &amp; observability</td><td>Prometheus metrics, Grafana dashboard, alert rules with <code>for:</code> windows</td></tr>
+        <tr><td>Log / metric correlation</td><td>JSON logs carry <code>request_id</code>, endpoint, status, latency, active failure mode</td></tr>
+        <tr><td>Liveness vs readiness</td><td><code>/health</code> stays 200 while <code>/ready</code> fails on a dependency outage</td></tr>
+        <tr><td>Incident management</td><td>Severity, timeline (detection &rarr; follow-up); resolve needs verification, close needs a follow-up action</td></tr>
+        <tr><td>Service restoration</td><td>Safe, token-protected failure reset, verified against SLIs before resolving</td></tr>
+        <tr><td>Containers &amp; APIs</td><td>Docker Compose, five services; REST API with OpenAPI docs at <code>/docs</code></td></tr>
+      </table>
+    </div>
+  </section>
+
+  <footer>
+    ProductionWatch is a personal learning project. All accounts and transactions are fictional (<code>DEMO-</code> references, "Test Member" aliases).
+    This page simulates the stack in your browser. Alert <code>for:</code> windows are shortened here so the demo moves quickly.
+    Not affiliated with any financial institution.
+  </footer>
+</div>
+
+<script>
+"use strict";
+// ---------------------------------------------------------------- simulation model
+// Mirrors app/: routes, failure modes and metric semantics match the real API.
+const ROUTES = [
+  { path: "/accounts", tmpl: "/accounts", weight: 3, ledger: false, account: true },
+  { path: "/accounts/1", tmpl: "/accounts/{account_id}", weight: 3, ledger: false, account: true },
+  { path: "/accounts/2/transactions", tmpl: "/accounts/{account_id}/transactions", weight: 3, ledger: true, account: true },
+  { path: "/health", tmpl: "/health", weight: 1, ledger: false, account: false },
+];
+const MODES = {
+  none: "Healthy baseline",
+  latency: "+1.5s latency on account endpoints",
+  error: "HTTP 500 on account endpoints",
+  dependency_outage: "ledger-service down: /ready 503, transactions 503",
+};
+const WINDOW = 15;          // seconds used for rate() style calculations
+const HISTORY = 180;        // seconds of chart history
+const ALERT_FOR = 8;        // shortened from 30s in prometheus/alert_rules.yml
+
+const state = {
+  t: 0, mode: "none", samples: [], series: { rps: [], err: [], p95: [] },
+  logs: [], alerts: {}, incident: null, openIncidents: 0, step: 0, reqSeq: 0,
+};
+const ALERTS = [
+  { name: "HighErrorRate", sev: "SEV2", desc: "5xx rate > 5%", test: m => m.errPct > 5 },
+  { name: "HighLatencyP95", sev: "SEV3", desc: "p95 > 1s", test: m => m.p95 > 1000 },
+  { name: "DependencyDown", sev: "SEV2", desc: "pw_dependency_up == 0", test: () => state.mode === "dependency_outage" },
+  { name: "ApiDown", sev: "SEV1", desc: "up == 0", test: () => false },
+];
+ALERTS.forEach(a => state.alerts[a.name] = { state: "inactive", since: 0 });
+
+function rand(min, max) { return min + Math.random() * (max - min); }
+function hex(n) { let s = ""; for (let i = 0; i < n; i++) s += "0123456789abcdef"[Math.floor(Math.random() * 16)]; return s; }
+function pickRoute() {
+  const total = ROUTES.reduce((s, r) => s + r.weight, 0);
+  let x = Math.random() * total;
+  for (const r of ROUTES) { if ((x -= r.weight) < 0) return r; }
+  return ROUTES[0];
+}
+function stamp() { return new Date().toISOString().replace("Z", "+00:00"); }
+
+function simulateRequest() {
+  const route = pickRoute();
+  let status = 200, ms = route.account ? rand(4, 28) : rand(1, 4);
+  if (Math.random() < 0.03) ms += rand(30, 70);                       // natural tail latency
+  if (route.account && state.mode === "latency") ms += 1500 + rand(0, 40);
+  if (route.account && state.mode === "error") status = 500;
+  else if (route.ledger && state.mode === "dependency_outage") status = 503;
+  state.samples.push({ t: state.t, status, ms });
+  const level = status >= 500 ? "ERROR" : "INFO";
+  if (status >= 500 || Math.random() < 0.35) {
+    addLog(level, "request completed", {
+      request_id: hex(16), method: "GET", endpoint: route.tmpl, path: route.path,
+      status, duration_ms: Math.round(ms * 10) / 10, failure_mode: state.mode,
+    });
+  }
+}
+
+function addLog(level, message, fields = {}) {
+  // Most useful fields first so they stay visible without scrolling sideways.
+  const { status, method, endpoint, duration_ms, failure_mode, request_id, ...rest } = fields;
+  const entry = { timestamp: stamp().slice(11, 23), level };
+  Object.assign(entry, status !== undefined ? { status, method, endpoint, duration_ms, failure_mode, request_id } : {});
+  state.logs.unshift({ ...entry, message, ...rest });
+  if (state.logs.length > 120) state.logs.length = 120;
+}
+
+function computeMetrics() {
+  const recent = state.samples.filter(s => s.t > state.t - WINDOW);
+  const errors = recent.filter(s => s.status >= 500).length;
+  const sorted = recent.map(s => s.ms).sort((a, b) => a - b);
+  const p95 = sorted.length ? sorted[Math.max(0, Math.ceil(sorted.length * 0.95) - 1)] : 0;
+  return { rps: recent.length / WINDOW, errPct: recent.length ? 100 * errors / recent.length : 0, p95 };
+}
+
+function evaluateAlerts(m) {
+  for (const a of ALERTS) {
+    const s = state.alerts[a.name];
+    if (a.test(m)) {
+      if (s.state === "inactive") { s.state = "pending"; s.since = state.t; }
+      else if (s.state === "pending" && state.t - s.since >= ALERT_FOR) {
+        s.state = "firing";
+        addLog("WARNING", "alert firing", { alertname: a.name, severity: a.sev });
+      }
+    } else if (s.state !== "inactive") {
+      if (s.state === "firing") addLog("INFO", "alert resolved", { alertname: a.name });
+      s.state = "inactive";
+    }
+  }
+}
+
+function tick() {
+  state.t += 1;
+  const n = Math.round(rand(6, 10));
+  for (let i = 0; i < n; i++) simulateRequest();
+  state.samples = state.samples.filter(s => s.t > state.t - WINDOW - 1);
+  const m = computeMetrics();
+  for (const k of ["rps", "err", "p95"]) {
+    state.series[k].push(k === "rps" ? m.rps : k === "err" ? m.errPct : m.p95);
+    if (state.series[k].length > HISTORY) state.series[k].shift();
+  }
+  evaluateAlerts(m);
+  render(m);
+}
+
+// ---------------------------------------------------------------- actions
+function setMode(mode, quiet) {
+  const previous = state.mode;
+  state.mode = mode;
+  if (!quiet) addLog(mode === "none" ? "INFO" : "WARNING",
+    mode === "none" ? "demo failure mode reset" : "demo failure mode changed",
+    { previous_mode: previous, failure_mode: mode });
+  renderModes();
+}
+function nowTime() { return new Date().toLocaleTimeString([], { hour12: false }); }
+function incidentEvent(phase, note) { state.incident.events.push({ time: nowTime(), phase, note }); }
+
+function openIncident() {
+  state.incident = {
+    id: 1 + Math.floor(rand(1, 40)), severity: "SEV2", status: "open",
+    title: "Accounts API returning HTTP 500",
+    symptoms: "HighErrorRate firing; 5xx rate above 50% on account routes",
+    impact: "Members cannot load account summaries or transactions",
+    events: [],
+  };
+  incidentEvent("detection", "Incident opened from HighErrorRate alert.");
+  state.openIncidents = 1;
+  addLog("WARNING", "incident opened", { incident_id: state.incident.id, severity: "SEV2" });
+}
+function triage() {
+  state.incident.status = "investigating";
+  incidentEvent("triage", "/health is 200 but /accounts returns 500. Logs show failure_mode=error on every account route. DB and ledger-service healthy, so the fault is in the application, not infrastructure.");
+}
+function mitigate() {
+  setMode("none");
+  state.incident.status = "mitigated";
+  incidentEvent("mitigation", "Rolled back the faulty change (demo reset to failure_mode=none).");
+}
+function resolve() {
+  state.incident.status = "resolved";
+  incidentEvent("recovery", "Verified: /ready 200, GET /accounts 200, 5xx rate 0%, HighErrorRate cleared.");
+  addLog("INFO", "incident resolved", { incident_id: state.incident.id });
+}
+function closeIncident() {
+  state.incident.status = "closed";
+  state.openIncidents = 0;
+  incidentEvent("follow_up", "Add a pre-deploy smoke test on /accounts and update runbook step 3.");
+  addLog("INFO", "incident closed", { incident_id: state.incident.id });
+}
+
+// Guided walkthrough: each step has an action and what to explain while it runs.
+const STEPS = [
+  { title: "1. Healthy baseline", button: "Inject a failure",
+    say: "Steady traffic, 0% errors, p95 in the tens of milliseconds. /health and /ready are both green. These four golden signals are what I watch first.",
+    run: () => setMode("error") },
+  { title: "2. Failure injected: wait for detection", button: "Open incident",
+    waitFor: () => state.alerts.HighErrorRate.state === "firing",
+    waitText: "Waiting for HighErrorRate to go from pending to firing…",
+    say: "A bad change ships. Error rate jumps. The alert goes pending first and only fires once the condition has held for its window, which avoids paging on a single blip.",
+    run: openIncident },
+  { title: "3. Triage", button: "Record triage findings",
+    say: "Set a severity based on member impact. Correlate the logs: failure_mode and the request_id let me tie a user-reported error to an exact log line. /health still returns 200, so the process is alive and the fault is in the application path.",
+    run: triage },
+  { title: "4. Mitigate: restore service first", button: "Roll back (reset)",
+    say: "Restore service before root cause. Rollback is the lowest-risk change. In the real stack this is a token-protected admin call that only exists in DEMO_MODE.",
+    run: mitigate },
+  { title: "5. Verify recovery", button: "Mark resolved",
+    waitFor: () => state.alerts.HighErrorRate.state === "inactive" && state.series.err.at(-1) < 1,
+    waitText: "Waiting for the error rate to return to baseline…",
+    say: "Never mark resolved on faith. Confirm with the same signals that detected it: error rate back to 0, alert cleared, readiness green.",
+    run: resolve },
+  { title: "6. Close with a follow-up", button: "Close incident",
+    say: "The API won't let you close an incident without a follow-up action. The point of an incident is the prevention work it produces: a smoke test, a tuned alert, a runbook update.",
+    run: closeIncident },
+  { title: "Walkthrough complete", button: "Restart walkthrough",
+    say: "Try the other failure modes: latency trips the p95 alert, and a dependency outage shows the liveness vs readiness split.",
+    run: () => { state.step = -1; state.incident = null; setMode("none", true); } },
+];
+
+function advance() {
+  const step = STEPS[state.step];
+  if (step.waitFor && !step.waitFor()) return;
+  step.run();
+  state.step += 1;
+  renderGuide(); renderIncident();
+}
+
+// ---------------------------------------------------------------- rendering
+const $ = id => document.getElementById(id);
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+function drawChart(svg, data, opts) {
+  const w = svg.clientWidth || 300, h = 150, pad = { l: 38, r: 6, t: 8, b: 16 };
+  const max = Math.max(opts.min, ...data, opts.threshold ? opts.threshold * 1.15 : 0) * 1.1;
+  const x = i => pad.l + (i + HISTORY - data.length) * (w - pad.l - pad.r) / (HISTORY - 1);
+  const y = v => pad.t + (h - pad.t - pad.b) * (1 - v / max);
+  let out = "";
+  for (let g = 0; g <= 3; g++) {
+    const v = max * g / 3, yy = y(v);
+    out += `<line x1="${pad.l}" x2="${w - pad.r}" y1="${yy}" y2="${yy}" stroke="#2a3340"/>` +
+      `<text x="${pad.l - 4}" y="${yy + 4}" fill="#8b98a8" font-size="10" text-anchor="end" font-family="ui-monospace,monospace">${opts.fmt(v)}</text>`;
+  }
+  if (opts.threshold) {
+    out += `<line x1="${pad.l}" x2="${w - pad.r}" y1="${y(opts.threshold)}" y2="${y(opts.threshold)}" stroke="#f85149" stroke-dasharray="4 4" opacity=".7"/>` +
+      `<text x="${w - pad.r - 2}" y="${y(opts.threshold) - 3}" fill="#f85149" font-size="10" text-anchor="end">alert</text>`;
+  }
+  if (data.length > 1) {
+    const pts = data.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+    out += `<polygon points="${x(0)},${y(0)} ${pts} ${x(data.length - 1)},${y(0)}" fill="${opts.color}" opacity=".12"/>` +
+      `<polyline points="${pts}" fill="none" stroke="${opts.color}" stroke-width="2"/>`;
+  }
+  out += `<text x="${pad.l}" y="${h - 2}" fill="#8b98a8" font-size="10">-${HISTORY / 60}m</text><text x="${w - pad.r}" y="${h - 2}" fill="#8b98a8" font-size="10" text-anchor="end">now</text>`;
+  svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+  svg.innerHTML = out;
+}
+
+function tile(label, value, cls) { return `<div class="panel tile ${cls}"><div class="label">${label}</div><div class="value">${value}</div></div>`; }
+
+function render(m) {
+  const ready = state.mode !== "dependency_outage";
+  $("tiles").innerHTML =
+    tile("Liveness /health", "UP", "ok") +
+    tile("Readiness /ready", ready ? "READY" : "503", ready ? "ok" : "bad") +
+    tile("Failure mode", state.mode, state.mode === "none" ? "ok" : "warn") +
+    tile("5xx error rate", m.errPct.toFixed(1) + "%", m.errPct > 5 ? "bad" : m.errPct > 1 ? "warn" : "ok") +
+    tile("p95 latency", m.p95 >= 1000 ? (m.p95 / 1000).toFixed(2) + " s" : Math.round(m.p95) + " ms", m.p95 > 1000 ? "bad" : m.p95 > 500 ? "warn" : "ok") +
+    tile("Open incidents", state.openIncidents, state.openIncidents ? "bad" : "ok");
+  drawChart($("c-rps"), state.series.rps, { min: 10, color: "#58a6ff", fmt: v => v.toFixed(0) });
+  drawChart($("c-err"), state.series.err, { min: 10, color: "#f85149", threshold: 5, fmt: v => v.toFixed(0) + "%" });
+  drawChart($("c-p95"), state.series.p95, { min: 100, color: "#d29922", threshold: 1000, fmt: v => v >= 1000 ? (v / 1000).toFixed(1) + "s" : v.toFixed(0) + "ms" });
+  $("v-rps").textContent = m.rps.toFixed(1) + " req/s";
+  $("v-err").textContent = m.errPct.toFixed(1) + "%";
+  $("v-p95").textContent = Math.round(m.p95) + " ms";
+  $("alerts").innerHTML = ALERTS.map(a => {
+    const s = state.alerts[a.name].state;
+    return `<div class="alert-row"><span><b>${a.name}</b> <span style="color:var(--muted)">${a.desc} &middot; ${a.sev}</span></span><span class="state ${s}">${s}</span></div>`;
+  }).join("");
+  $("logs").innerHTML = state.logs.slice(0, 60).map(e => {
+    const cls = e.level === "ERROR" ? "e" : e.level === "WARNING" ? "w" : "i";
+    return `<span class="${cls}">${esc(JSON.stringify(e))}</span>`;
+  }).join("\n");
+  $("clock").textContent = new Date().toLocaleTimeString([], { hour12: false });
+  renderGuide();
+}
+
+function renderModes() {
+  $("modes").innerHTML = Object.entries(MODES).map(([k, d]) =>
+    `<button class="btn ${state.mode === k ? "active" : ""}" data-mode="${k}">${k}<small>${d}</small></button>`).join("");
+}
+
+let guideKey = "";
+function renderGuide() {
+  const step = STEPS[state.step];
+  const waiting = !!(step.waitFor && !step.waitFor());
+  // Only rebuild when something changed, so a click is never lost to a re-render.
+  const key = state.step + ":" + waiting;
+  if (key === guideKey) return;
+  guideKey = key;
+  $("guide").innerHTML = `<h2>Guided incident walkthrough</h2>
+    <div class="progress">${STEPS.slice(0, -1).map((_, i) => `<i class="${i < state.step ? "done" : ""}"></i>`).join("")}</div>
+    <div class="step-title">${step.title}</div>
+    <div class="say">${step.say}</div>
+    <button class="btn primary" id="next" ${waiting ? "disabled" : ""}>${waiting ? step.waitText : step.button}</button>`;
+  $("next").onclick = advance;
+}
+
+function renderIncident() {
+  const inc = state.incident;
+  if (!inc) {
+    $("incident").innerHTML = `<h2>Incident record</h2><p style="color:var(--muted);margin:0">No open incident. Start the guided walkthrough, or inject a failure and watch the alerts.</p>`;
+    return;
+  }
+  $("incident").innerHTML = `<h2>Incident record</h2>
+    <div class="inc-head"><span class="sev">${inc.severity}</span><b>#${inc.id} ${esc(inc.title)}</b><span class="status">status: ${inc.status}</span></div>
+    <div style="color:var(--muted);font-size:13px;margin-bottom:10px">Symptoms: ${esc(inc.symptoms)}<br>Impact: ${esc(inc.impact)}</div>
+    <ul class="timeline">${inc.events.map(e => `<li class="${e.phase}"><span class="t">${e.time}</span> <span class="p">${e.phase.replace("_", " ")}</span><br>${esc(e.note)}</li>`).join("")}</ul>`;
+}
+
+$("modes").addEventListener("click", e => {
+  const b = e.target.closest("button[data-mode]");
+  if (b) setMode(b.dataset.mode);
+});
+
+// Pre-fill healthy history so the charts start full. The first WINDOW seconds
+// only warm up the rate window and are not plotted.
+for (let i = 0; i < HISTORY + WINDOW; i++) {
+  state.t += 1;
+  const n = Math.round(rand(6, 10));
+  for (let j = 0; j < n; j++) simulateRequest();
+  state.samples = state.samples.filter(s => s.t > state.t - WINDOW - 1);
+  if (i < WINDOW) continue;
+  const m = computeMetrics();
+  state.series.rps.push(m.rps); state.series.err.push(m.errPct); state.series.p95.push(m.p95);
+}
+state.logs = state.logs.slice(0, 20);
+addLog("INFO", "service started", { version: "1.0.0", demo_mode: true, seeded_accounts: 5 });
+renderModes(); renderIncident(); tick();
+setInterval(tick, 1000);
+window.addEventListener("resize", () => render(computeMetrics()));
+</script>
+</body>
+</html>

@@ -1,0 +1,86 @@
+# ProductionWatch local reliability lab.
+#   docker compose up --build
+# API http://localhost:8000  Console http://localhost:8501
+# Prometheus http://localhost:9090  Grafana http://localhost:3000
+x-demo-env: &demo-env
+  DEMO_MODE: ${DEMO_MODE:-true}
+  DEMO_TOKEN: ${DEMO_TOKEN:-change-me-local-demo-token}
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    environment:
+      <<: *demo-env
+      DATABASE_URL: sqlite:////app/data/productionwatch.db
+      DEMO_LATENCY_SECONDS: ${DEMO_LATENCY_SECONDS:-1.5}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "8000:8000"
+    volumes:
+      - pw-data:/app/data
+    restart: unless-stopped
+
+  console:
+    build:
+      context: .
+      dockerfile: Dockerfile.console
+    environment:
+      <<: *demo-env
+      API_URL: http://api:8000
+      API_PUBLIC_URL: http://localhost:8000
+      GRAFANA_PUBLIC_URL: http://localhost:3000
+      PROMETHEUS_PUBLIC_URL: http://localhost:9090
+    ports:
+      - "8501:8501"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  # Light steady traffic (about 2 req/s) so the dashboards are never empty.
+  loadgen:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    command: ["python", "scripts/generate_traffic.py", "--loop", "--rps", "2"]
+    healthcheck:
+      disable: true
+    environment:
+      API_URL: http://api:8000
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=2d
+    volumes:
+      - ./prometheus:/etc/prometheus:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - api
+
+  grafana:
+    image: grafana/grafana:11.3.1
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      # Read-only anonymous access keeps the demo to one click; local use only.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/productionwatch.json
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+
+volumes:
+  pw-data:

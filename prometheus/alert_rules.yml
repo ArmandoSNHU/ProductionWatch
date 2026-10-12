@@ -1,0 +1,32 @@
+# Alert rules visible at http://localhost:9090/alerts. There is no Alertmanager
+# in this lab, so alerts show as pending/firing in the UI rather than paging.
+groups:
+  - name: productionwatch
+    rules:
+      - alert: ApiDown
+        expr: up{job="productionwatch-api"} == 0
+        for: 30s
+        labels: {severity: SEV1}
+        annotations:
+          summary: "ProductionWatch API is not being scraped"
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(pw_http_errors_total[1m]))
+            / clamp_min(sum(rate(pw_http_requests_total[1m])), 0.001) > 0.05
+        for: 30s
+        labels: {severity: SEV2}
+        annotations:
+          summary: "5xx error rate above 5% for 30s"
+      - alert: HighLatencyP95
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(pw_http_request_duration_seconds_bucket[1m]))) > 1
+        for: 30s
+        labels: {severity: SEV3}
+        annotations:
+          summary: "p95 latency above 1s for 30s"
+      - alert: DependencyDown
+        expr: pw_dependency_up == 0
+        for: 15s
+        labels: {severity: SEV2}
+        annotations:
+          summary: "Dependency {{ $labels.dependency }} is unavailable"
