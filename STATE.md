@@ -2,7 +2,7 @@
 
 ## Restart Point (2026-10-12)
 
-- **Status:** v1.0 complete and pushed to `origin/main` (github.com/ArmandoSNHU/ProductionWatch).
+- **Status:** v1.0 complete and pushed; CI green on `4a5fc64`; Pages live (HTTP 200).
 - **Verify before changing anything:** `.venv/Scripts/python.exe -m pytest -q` → `34 passed`.
 - **Live check:** `docker compose up --build -d`, then `bash scripts/run_incident_scenario.sh 40` → ends with `incident N closed ['detection', 'triage', 'mitigation', 'recovery', 'follow_up']`.
 - **Pages:** `site/index.html` deployed by `.github/workflows/pages.yml` to https://armandosnhu.github.io/ProductionWatch/ (Pages source must be "GitHub Actions").
